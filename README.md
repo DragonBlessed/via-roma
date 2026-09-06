@@ -48,5 +48,5 @@ transportation networks across different time periods.
 
 - GeoPandas
 
-\- Shapely
+- Shapely
 
