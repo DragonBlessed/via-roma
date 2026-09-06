@@ -1,4 +1,4 @@
-\# Roman Transportation Network Explorer
+# Roman Transportation Network Explorer
 
 
 
@@ -8,45 +8,45 @@ transportation networks across different time periods.
 
 
 
-\## Planned Features
+## Planned Features
 
 
 
-\- Interactive Roman transportation map
+- Interactive Roman transportation map
 
-\- Historical network periods
+- Historical network periods
 
-\- Settlement and road metadata
+- Settlement and road metadata
 
-\- Shortest-path routing using Dijkstra's algorithm
+- Shortest-path routing using Dijkstra's algorithm
 
-\- Historical source attribution
+- Historical source attribution
 
-\- Network analysis
+- Network analysis
 
-\- Potential multimodal road, river, and sea routing
-
-
-
-\## Planned Stack
+- Potential multimodal road, river, and sea routing
 
 
 
-\- React
+## Planned Stack
 
-\- TypeScript
 
-\- MapLibre GL JS
 
-\- Python
+- React
 
-\- FastAPI
+- TypeScript
 
-\- PostgreSQL
+- MapLibre GL JS
 
-\- PostGIS
+- Python
 
-\- GeoPandas
+- FastAPI
+
+- PostgreSQL
+
+- PostGIS
+
+- GeoPandas
 
 \- Shapely
 
