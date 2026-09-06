@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+dist/
+
+# Environment files
+.env
+.env.*
+
+# Raw/processed datasets
+data/raw/*
+!data/raw/README.md
+
+data/processed/*
+!data/processed/README.md
+
+# QGIS temporary files
+*.qgz~
+*.qgs~
+
+# IDE
+.vscode/
+.idea/
