@@ -1,5 +1,6 @@
-# Roman Transportation Network Explorer
+# Via Roma
 
+**Roman Transportation Network Explorer**
 
 
 A capstone project for exploring and analyzing reconstructed Roman
