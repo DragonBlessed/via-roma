@@ -255,3 +255,204 @@ The Itiner-e road geometry will be examined to determine:
 After topology analysis, the next major milestone will be constructing
 the first NetworkX graph from real Itiner-e geometry and calculating
 a real route between two Pleiades settlements.
+
+
+## Road Topology Analysis
+
+The 2,527 Itiner-e transportation segments in the regional
+development subset were inspected to determine whether adjacent
+segments share common endpoint coordinates.
+
+Results:
+
+- Road segments: 2,527
+- Total endpoints: 5,054
+- Unique exact endpoint coordinates: 1,716
+- Coordinates shared by multiple road segments: 1,529
+- Endpoints participating in exact matches: 4,867
+- Exact endpoint connectivity: 96.30%
+
+### Coordinate Precision Test
+
+| Matching Method | Endpoints in Shared Coordinates | Percentage |
+|---|---:|---:|
+| Exact coordinates | 4,867 | 96.30% |
+| Rounded to 6 decimals | 4,867 | 96.30% |
+| Rounded to 5 decimals | 4,882 | 96.60% |
+| Rounded to 4 decimals | 4,888 | 96.72% |
+| Rounded to 3 decimals | 4,892 | 96.79% |
+
+Rounding coordinates produced only a very small increase in
+connectivity. This indicates that minor coordinate precision
+differences are not a major source of disconnected road segments.
+
+Because 96.3% of endpoints already participate in exact coordinate
+matches, the first graph implementation will use exact road endpoint
+coordinates as graph nodes rather than applying aggressive spatial
+snapping.
+
+The remaining unmatched endpoints will be investigated after graph
+construction. Some may represent legitimate termini, boundaries of
+the development subset, coastal endpoints, or incomplete historical
+data rather than topology errors.
+
+## Graph Construction
+
+The regional Itiner-e subset was converted into a NetworkX
+MultiDiGraph using exact road segment endpoints as graph nodes.
+
+Results:
+
+- Input road segments: 2,527
+- Road segments successfully loaded: 2,527
+- Road segments skipped: 0
+- Graph nodes: 1,716
+- Directed graph edges: 5,054
+
+Each bidirectional Itiner-e segment is represented as two directed
+edges, allowing future routing logic to support directional
+passability while retaining the original road metadata.
+
+The graph preserves attributes including road name, road type,
+distance, historical certainty, chronology, bibliography, and
+original geometry.
+
+Generated outputs:
+
+- `italy_graph.pkl`
+- `italy_graph_nodes.geojson`
+- `italy_graph_edges.geojson`
+
+---
+
+## Graph Validation
+
+The resulting transportation graph was analyzed before implementing
+routing.
+
+Results:
+
+- Nodes: 1,716
+- Directed edges: 5,054
+- Weakly connected components: 11
+- Largest component: 1,226 nodes
+- Largest component percentage: 71.45%
+
+Largest component sizes:
+
+1. 1,226 nodes
+2. 326 nodes
+3. 87 nodes
+4. 37 nodes
+5. 26 nodes
+6. 4 nodes
+7. 2 nodes
+8. 2 nodes
+9. 2 nodes
+10. 2 nodes
+
+Degree statistics:
+
+- Minimum degree: 1
+- Maximum degree: 25
+- Average degree: 2.95
+- Degree-1 nodes: 187
+
+The 187 degree-1 nodes correspond closely with the 187 endpoints
+previously found not to participate in exact endpoint matches. This
+suggests that graph construction is consistent with the raw
+Itiner-e topology.
+
+The largest connected component contains more than 71% of all graph
+nodes, which is sufficient to proceed with prototype routing.
+
+The smaller connected components will be investigated later. They
+may represent geographically separated networks, legitimate road
+termini, boundaries of the development subset, islands, incomplete
+historical data, or road intersections that occur within LineStrings
+rather than at segment endpoints.
+
+## Historical Place Attachment
+
+Routing-relevant Pleiades locations were attached to the nearest
+existing transportation graph node.
+
+Results:
+
+- Places processed: 3,009
+- Automatic attachments (<= 2 km): 669
+- Review attachments (2-5 km): 448
+- Far attachments (> 5 km): 1,892
+- Places attached to largest graph component: 1,786 (59.36%)
+
+Graph-node attachment distances:
+
+- Mean: 9.996 km
+- Median: 7.529 km
+- 25th percentile: 2.537 km
+- 75th percentile: 14.413 km
+- Maximum: 74.454 km
+
+These distances are substantially larger than the earlier
+place-to-road-geometry distances because the prototype currently
+attaches settlements to existing road endpoints rather than to the
+nearest position along a road segment.
+
+This is a known prototype limitation. A later version will project
+settlements onto the nearest road geometry and insert routing nodes
+at those positions.
+
+Important test locations were successfully attached to the largest
+connected component:
+
+- Roma: node 101, 0.472 km
+- Capua: node 1160, 0.558 km
+- Parthenope/Neapolis: node 95, 0.450 km
+- Beneventum/Maleventum: node 86, 0.314 km
+- Brundisium/Brentesion: node 75, 0.201 km
+
+These locations provide suitable test cases for the initial
+Dijkstra routing implementation.
+
+
+## Initial Historical Route
+
+The custom Dijkstra implementation was successfully used to
+calculate a route between Roma and Capua using the graph constructed
+from real Itiner-e transportation data.
+
+Results:
+
+- Origin: Roma
+- Origin graph node: 101
+- Destination: Capua
+- Destination graph node: 1160
+- Connected component: 0
+- Network distance: 197.67 km
+- Graph nodes traversed: 22
+- Road edges traversed: 21
+
+The calculated route used a sequence of historically identified
+Itiner-e segments including:
+
+- Rome-Ad Bivium
+- Ad Bivium-Ferentinum
+- Fregellanum-Ferentinum
+- Aquinum-Fregellanum
+- Aquinum-Ad Flexum
+- Ad Flexum-Teanum Sidicinum
+- Teanum Sidicinum-Capua
+
+The resulting route was exported as:
+
+`data/processed/first_real_route.geojson`
+
+This represents the first end-to-end demonstration of the project's
+core routing pipeline:
+
+Itiner-e geometry
+→ graph construction
+→ Pleiades place attachment
+→ custom Dijkstra algorithm
+→ calculated historical route
+→ GeoJSON visualization.
