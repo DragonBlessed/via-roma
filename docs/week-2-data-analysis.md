@@ -525,3 +525,9 @@ project's custom Dijkstra implementation.
 
 This backend can now serve as the interface between the transportation
 network and the future React/MapLibre frontend.
+
+3466
+8554
+
+423025
+432754

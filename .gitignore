@@ -25,3 +25,15 @@ data/processed/*
 # IDE
 .vscode/
 .idea/
+
+# Development/test output
+stdout.txt
+stderr.txt
+python-*-test.txt
+docs/*-output.txt
+docs/*-error.txt
+docs/fastapi-package-check*.txt
+
+# Frontend generated files
+frontend/node_modules/
+frontend/dist/

@@ -51,3 +51,26 @@ transportation networks across different time periods.
 
 - Shapely
 
+## Run Instructions
+
+Via Roma currently uses:
+
+- Python / FastAPI for the backend
+- Graph v2 for transportation routing
+- a custom Dijkstra implementation
+- React + TypeScript + Vite for the frontend
+- MapLibre GL JS for map visualization
+
+### Backend
+
+From the project root:
+
+```powershell
+conda activate roman-capstone
+uvicorn backend.api.main:app --reload
+
+From the frontend directory:
+
+```powershell
+npm install
+npm run dev

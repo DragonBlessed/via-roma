@@ -8,6 +8,8 @@ from backend.routing.service import (
     RoutingService,
 )
 
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 # ---------------------------------------------------------
 # Application setup
@@ -22,10 +24,28 @@ app = FastAPI(
     version="0.1.0",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=1000,
+    compresslevel=5,
+)
+
 
 # Load Graph v2 and its place mapping once when the
 # application starts.
 router = RoutingService()
+router.network_geojson()
 
 
 # ---------------------------------------------------------
@@ -79,6 +99,10 @@ def health():
         },
     }
 
+@app.get("/network")
+def network():
+
+    return router.network_geojson()
 
 # ---------------------------------------------------------
 # Place search
@@ -173,6 +197,15 @@ def route(
 
         raise HTTPException(
             status_code=404,
+            detail=str(
+                exc
+            ),
+        ) from exc
+        
+    except ValueError as exc:
+
+        raise HTTPException(
+            status_code=422,
             detail=str(
                 exc
             ),

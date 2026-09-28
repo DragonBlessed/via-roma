@@ -53,6 +53,8 @@ class RoutingService:
             place_nodes_path
         )
 
+        self._network_geojson_cache = None
+        
 
         # -------------------------------------------------
         # Load Graph v2 once
@@ -64,6 +66,11 @@ class RoutingService:
         ) as f:
 
             self.graph = pickle.load(f)
+
+
+        self._component_by_node = (
+            self._component_index()
+        )
 
 
         # -------------------------------------------------
@@ -101,6 +108,61 @@ class RoutingService:
             in self.places.iterrows()
         }
 
+    def _component_index(self) -> dict:
+        """
+        Assign every graph node to a weakly connected
+        transportation component.
+        """
+
+        component_by_node = {}
+        component_id = 0
+
+        for start_node in self.graph.nodes:
+
+            if start_node in component_by_node:
+                continue
+
+            stack = [start_node]
+
+            component_by_node[
+                start_node
+            ] = component_id
+
+            while stack:
+
+                node = stack.pop()
+
+                neighbors = set(
+                    self.graph.successors(
+                        node
+                    )
+                )
+
+                neighbors.update(
+                    self.graph.predecessors(
+                        node
+                    )
+                )
+
+                for neighbor in neighbors:
+
+                    if (
+                        neighbor
+                        in component_by_node
+                    ):
+                        continue
+
+                    component_by_node[
+                        neighbor
+                    ] = component_id
+
+                    stack.append(
+                        neighbor
+                    )
+
+            component_id += 1
+
+        return component_by_node
 
     # -----------------------------------------------------
     # Basic statistics
@@ -129,93 +191,110 @@ class RoutingService:
                 .nunique()
             ),
         }
+    
+    def network_geojson(self) -> dict:
+        """
+        Return Graph v2's physical transportation network as GeoJSON.
 
+        Graph v2 represents most physical subsegments using two directed
+        edges. Reverse-direction duplicates are removed before returning
+        the network to the frontend.
+        """
 
-    # -----------------------------------------------------
-    # Convert mapping row to API-friendly dictionary
-    # -----------------------------------------------------
+        if self._network_geojson_cache is not None:
+            return self._network_geojson_cache
 
-    def _place_from_row(
-        self,
-        row,
-    ):
+        features = []
+        seen_physical_edges = set()
 
-        return {
-            "pleiades_id": int(
-                row[
-                    "pleiades_id"
-                ]
-            ),
-            "name": str(
-                row[
-                    "title"
-                ]
-            ),
-            "graph_node_id": int(
-                row[
-                    "graph_node_id"
-                ]
-            ),
-            "itinere_id": int(
-                row[
-                    "itinere_id"
-                ]
-            ),
-            "road_name": (
-                None
-                if pd.isna(
-                    row[
+        for source, target, key, data in self.graph.edges(
+            keys=True,
+            data=True,
+        ):
+            coordinates = data.get("coordinates")
+
+            if not coordinates or len(coordinates) < 2:
+                continue
+
+            itinere_id = data.get("itinere_id")
+            subsegment_index = data.get(
+                "subsegment_index"
+            )
+
+            # Forward and backward versions of the same physical
+            # subsegment use opposite source/target nodes.
+            endpoint_pair = tuple(
+                sorted(
+                    (
+                        int(source),
+                        int(target),
+                    )
+                )
+            )
+
+            physical_key = (
+                itinere_id,
+                subsegment_index,
+                endpoint_pair,
+            )
+
+            if physical_key in seen_physical_edges:
+                continue
+
+            seen_physical_edges.add(
+                physical_key
+            )
+
+            feature = {
+                "type": "Feature",
+                "properties": {
+                    "itinere_id": (
+                        int(itinere_id)
+                        if itinere_id is not None
+                        else None
+                    ),
+                    "road_name": data.get(
                         "road_name"
-                    ]
-                )
-                else str(
-                    row[
-                        "road_name"
-                    ]
-                )
-            ),
-            "road_type": (
-                None
-                if pd.isna(
-                    row[
+                    ),
+                    "road_type": data.get(
                         "road_type"
-                    ]
-                )
-                else str(
-                    row[
-                        "road_type"
-                    ]
-                )
-            ),
-            "transport_mode": (
-                None
-                if pd.isna(
-                    row[
+                    ),
+                    "transport_mode": data.get(
                         "transport_mode"
-                    ]
-                )
-                else str(
-                    row[
-                        "transport_mode"
-                    ]
-                )
-            ),
-            "distance_to_network_km": float(
-                row[
-                    "distance_to_network_km"
-                ]
-            ),
-            "longitude": float(
-                row[
-                    "node_longitude"
-                ]
-            ),
-            "latitude": float(
-                row[
-                    "node_latitude"
-                ]
-            ),
+                    ),
+                    "distance_km": float(
+                        data.get(
+                            "distance_km",
+                            0.0,
+                        )
+                    ),
+                },
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [
+                        [
+                            float(coordinate[0]),
+                            float(coordinate[1]),
+                        ]
+                        for coordinate
+                        in coordinates
+                    ],
+                },
+            }
+
+            features.append(
+                feature
+            )
+
+        result = {
+            "type": "FeatureCollection",
+            "feature_count": len(features),
+            "features": features,
         }
+
+        self._network_geojson_cache = result
+
+        return result
 
 
     # -----------------------------------------------------
@@ -534,7 +613,6 @@ class RoutingService:
             destination_pleiades_id
         )
 
-
         source_node = origin[
             "graph_node_id"
         ]
@@ -542,6 +620,30 @@ class RoutingService:
         target_node = destination[
             "graph_node_id"
         ]
+        
+        origin_component = (
+            self._component_by_node[
+                source_node
+            ]
+        )
+
+        destination_component = (
+            self._component_by_node[
+                target_node
+            ]
+        )
+
+        if (
+            origin_component
+            != destination_component
+        ):
+            raise ValueError(
+                "No route currently exists between "
+                f"{origin['name']} and "
+                f"{destination['name']} because "
+                "they belong to disconnected "
+                "transportation networks."
+            )
 
 
         result = (
@@ -678,4 +780,56 @@ class RoutingService:
             ),
             "geometry": geometry,
             "segments": segments,
+        }
+    
+    def _place_from_row(
+        self,
+        row,
+    ) -> dict:
+
+        def optional_string(value):
+            if pd.isna(value):
+                return None
+
+            return str(value)
+
+        def optional_int(value):
+            if pd.isna(value):
+                return None
+
+            return int(value)
+
+        return {
+            "pleiades_id": int(
+                row["pleiades_id"]
+            ),
+            "name": str(
+                row["title"]
+            ),
+            "graph_node_id": int(
+                row["graph_node_id"]
+            ),
+            "itinere_id": optional_int(
+                row["itinere_id"]
+            ),
+            "road_name": optional_string(
+                row["road_name"]
+            ),
+            "road_type": optional_string(
+                row["road_type"]
+            ),
+            "transport_mode": optional_string(
+                row["transport_mode"]
+            ),
+            "distance_to_network_km": float(
+                row[
+                    "distance_to_network_km"
+                ]
+            ),
+            "longitude": float(
+                row["node_longitude"]
+            ),
+            "latitude": float(
+                row["node_latitude"]
+            ),
         }
