@@ -22,16 +22,26 @@ DEFAULT_GRAPH_PATH = (
     PROJECT_ROOT
     / "data"
     / "processed"
-    / "italy_graph_v2.pkl"
+    / "mediterranean_graph_v3.pkl"
 )
 
 DEFAULT_PLACE_NODES_PATH = (
     PROJECT_ROOT
     / "data"
     / "processed"
-    / "italy_graph_v2_place_nodes.csv"
+    / "mediterranean_graph_v3_place_nodes.csv"
 )
 
+SUGGESTED_PLACE_IDS = (
+    423025,  # Roma
+    579885,  # Athenae
+    314921,  # Carthago
+    599612,  # Ephesus
+    520998,  # Constantinopolis
+    727070,  # Alexandria
+    442509,  # Brundisium
+    256177,  # Gades
+)
 
 # ---------------------------------------------------------
 # Routing service
@@ -57,7 +67,7 @@ class RoutingService:
         
 
         # -------------------------------------------------
-        # Load Graph v2 once
+        # Load the routing graph once
         # -------------------------------------------------
 
         with open(
@@ -321,7 +331,7 @@ class RoutingService:
             raise KeyError(
                 f"Pleiades place "
                 f"{pleiades_id} "
-                f"is not mapped to Graph v2."
+                f"is not mapped to the current routing graph."
             )
 
 
@@ -336,6 +346,42 @@ class RoutingService:
     # This will later support a FastAPI /places endpoint
     # and frontend autocomplete.
     # -----------------------------------------------------
+
+    # -----------------------------------------------------
+    # Suggested places
+    # -----------------------------------------------------
+
+    def suggested_places(
+        self,
+        limit=8,
+    ):
+
+        limit = max(
+            1,
+            int(limit),
+        )
+
+        results = []
+
+        for pleiades_id in SUGGESTED_PLACE_IDS:
+
+            row = self._places_by_id.get(
+                pleiades_id
+            )
+
+            if row is None:
+                continue
+
+            results.append(
+                self._place_from_row(
+                    row
+                )
+            )
+
+            if len(results) >= limit:
+                break
+
+        return results
 
     def search_places(
         self,
