@@ -87,6 +87,10 @@ type Place = {
   number;
 };
 
+type SuggestedPlacesResponse = {
+  count: number;
+  results: Place[];
+};
 
 type PlaceSearchResponse = {
   query: string;
@@ -258,6 +262,20 @@ function App() {
     setDestinationResults,
   ] = useState<Place[]>([]);
 
+  const [
+    suggestedPlaces,
+    setSuggestedPlaces,
+  ] = useState<Place[]>([]);
+
+  const [
+    originDropdownOpen,
+    setOriginDropdownOpen,
+  ] = useState(false);
+
+  const [
+    destinationDropdownOpen,
+    setDestinationDropdownOpen,
+  ] = useState(false);  
 
   const [
     selectedOrigin,
@@ -349,11 +367,11 @@ const [
           "https://demotiles.maplibre.org/style.json",
 
         center: [
-          12.5,
-          42.0,
+          16.0,
+          38.0,
         ],
 
-        zoom: 5,
+        zoom: 3.2,
 
       });
 
@@ -886,6 +904,49 @@ const [
   }, []);
 
 
+  useEffect(() => {
+
+    async function loadSuggestedPlaces() {
+
+      try {
+
+        const response =
+          await fetch(
+            `${API_BASE_URL}/places/suggestions?limit=8`
+          );
+
+        if (!response.ok) {
+
+          throw new Error(
+            `Suggested places failed: HTTP ${response.status}`
+          );
+
+        }
+
+        const data:
+          SuggestedPlacesResponse =
+          await response.json();
+
+        setSuggestedPlaces(
+          data.results
+        );
+
+      }
+      catch (error) {
+
+        console.error(
+          "Suggested places failed to load:",
+          error
+        );
+
+      }
+
+    }
+
+    loadSuggestedPlaces();
+
+  }, []);
+
   // -------------------------------------------------------
   // Search helper
   // -------------------------------------------------------
@@ -939,30 +1000,53 @@ const [
 
   }
 
-
   // -------------------------------------------------------
   // Origin search
   // -------------------------------------------------------
 
   useEffect(() => {
 
+    if (!originDropdownOpen) {
+      return;
+    }
+
+
+    const trimmed =
+      originQuery.trim();
+
+
+    // Empty field, or clicking an already-selected field:
+    // show helpful starting places.
+    if (
+      trimmed.length === 0 ||
+      (
+        selectedOrigin &&
+        originQuery === selectedOrigin.name
+      )
+    ) {
+
+      setOriginResults(
+        suggestedPlaces
+      );
+
+      return;
+
+    }
+
+
+    if (trimmed.length < 2) {
+
+      setOriginResults([]);
+
+      return;
+
+    }
+
+
     const timeout =
       window.setTimeout(
 
         async () => {
-
-          if (
-            originQuery
-              .trim()
-              .length < 2
-          ) {
-
-            setOriginResults([]);
-
-            return;
-
-          }
-
 
           try {
 
@@ -970,7 +1054,6 @@ const [
               await searchPlaces(
                 originQuery
               );
-
 
             setOriginResults(
               results
@@ -989,7 +1072,6 @@ const [
         },
 
         250
-
       );
 
 
@@ -1001,7 +1083,12 @@ const [
 
     };
 
-  }, [originQuery]);
+  }, [
+    originQuery,
+    originDropdownOpen,
+    selectedOrigin,
+    suggestedPlaces,
+  ]);
 
 
   // -------------------------------------------------------
@@ -1010,25 +1097,46 @@ const [
 
   useEffect(() => {
 
+    if (!destinationDropdownOpen) {
+      return;
+    }
+
+
+    const trimmed =
+      destinationQuery.trim();
+
+
+    if (
+      trimmed.length === 0 ||
+      (
+        selectedDestination &&
+        destinationQuery ===
+          selectedDestination.name
+      )
+    ) {
+
+      setDestinationResults(
+        suggestedPlaces
+      );
+
+      return;
+
+    }
+
+
+    if (trimmed.length < 2) {
+
+      setDestinationResults([]);
+
+      return;
+
+    }
+
+
     const timeout =
       window.setTimeout(
 
         async () => {
-
-          if (
-            destinationQuery
-              .trim()
-              .length < 2
-          ) {
-
-            setDestinationResults(
-              []
-            );
-
-            return;
-
-          }
-
 
           try {
 
@@ -1036,7 +1144,6 @@ const [
               await searchPlaces(
                 destinationQuery
               );
-
 
             setDestinationResults(
               results
@@ -1055,7 +1162,6 @@ const [
         },
 
         250
-
       );
 
 
@@ -1067,7 +1173,12 @@ const [
 
     };
 
-  }, [destinationQuery]);
+  }, [
+    destinationQuery,
+    destinationDropdownOpen,
+    selectedDestination,
+    suggestedPlaces,
+  ]);
 
 
   // -------------------------------------------------------
@@ -1088,6 +1199,10 @@ const [
 
     setOriginResults([]);
 
+    setOriginDropdownOpen(
+      false
+    );
+
     clearRoute();
 
   }
@@ -1107,6 +1222,10 @@ const [
 
     setDestinationResults([]);
 
+    setDestinationDropdownOpen(
+      false
+    );
+
     clearRoute();
 
   }
@@ -1122,6 +1241,10 @@ const [
 
     setSelectedOrigin(
       null
+    );
+
+    setOriginDropdownOpen(
+      true
     );
 
     clearRoute();
@@ -1141,10 +1264,19 @@ const [
       null
     );
 
+    setDestinationDropdownOpen(
+      true
+    );
+
     clearRoute();
 
   }
 
+  function kmToMiles(
+    kilometers: number
+  ) {
+    return kilometers * 0.621371;
+  }
 
   // -------------------------------------------------------
   // Clear existing map route
@@ -1728,11 +1860,24 @@ const [
 
 
             {
-              originResults.length >
-              0 &&
+              originDropdownOpen &&
+              originResults.length > 0 &&
               (
                 <div className="search-results">
-
+                  {
+                    (
+                      originQuery.trim().length === 0 ||
+                      (
+                        selectedOrigin &&
+                        originQuery === selectedOrigin.name
+                      )
+                    ) &&
+                    (
+                      <div className="search-results-heading">
+                        Suggested Roman places
+                      </div>
+                    )
+                  }
                   {
                     originResults.map(
                       (place) => (
@@ -1821,11 +1966,71 @@ const [
 
 
             {
-              destinationResults.length >
-              0 &&
+              destinationDropdownOpen &&
+              destinationResults.length > 0 &&
               (
                 <div className="search-results">
+                <input
+                  id="destination"
+                  type="text"
 
+                  value={
+                    destinationQuery
+                  }
+
+                  placeholder="Search or choose a Roman place..."
+
+                  autoComplete="off"
+
+                  onFocus={() =>
+                    setDestinationDropdownOpen(
+                      true
+                    )
+                  }
+
+                  onBlur={(event) => {
+
+                    const nextFocus =
+                      event.relatedTarget;
+
+                    if (
+                      !nextFocus ||
+                      !event.currentTarget
+                        .parentElement
+                        ?.contains(
+                          nextFocus as Node
+                        )
+                    ) {
+
+                      setDestinationDropdownOpen(
+                        false
+                      );
+
+                    }
+
+                  }}
+
+                  onChange={(event) =>
+                    handleDestinationChange(
+                      event.target.value
+                    )
+                  }
+                />
+                  {
+                    (
+                      destinationQuery.trim().length === 0 ||
+                      (
+                        selectedDestination &&
+                        destinationQuery ===
+                          selectedDestination.name
+                      )
+                    ) &&
+                    (
+                      <div className="search-results-heading">
+                        Suggested Roman places
+                      </div>
+                    )
+                  }
                   {
                     destinationResults.map(
                       (place) => (
@@ -2013,7 +2218,13 @@ const [
                       .toFixed(2)
                   }{" "}
 
-                  km
+                  km /{" "}
+                  {
+                    kmToMiles(
+                      route.distance_km
+                    ).toFixed(2)
+                  }{" "}
+                  mi
 
                 </p>
 
@@ -2067,7 +2278,13 @@ const [
                             .toFixed(2)
                         }{" "}
 
-                        km
+                        km /{" "}
+                        {
+                          kmToMiles(
+                            distance
+                          ).toFixed(2)
+                        }{" "}
+                        mi
 
                       </p>
 
@@ -2183,7 +2400,13 @@ const [
                       .toFixed(2)
                   }{" "}
 
-                  km
+                  km /{" "}
+                  {
+                    kmToMiles(
+                      selectedSegment.distance_km
+                    ).toFixed(2)
+                  }{" "}
+                  mi
                 </p>
 
 

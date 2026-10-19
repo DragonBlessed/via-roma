@@ -294,3 +294,18 @@ input {
 .network-status-error {
   color: #e29a9a;
 }
+
+.search-results-heading {
+  padding: 8px 12px;
+
+  background: #f2eee5;
+  color: #665a43;
+
+  border-bottom: 1px solid #d8d0c2;
+
+  font-size: 0.78rem;
+  font-weight: bold;
+
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

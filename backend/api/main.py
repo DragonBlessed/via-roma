@@ -138,6 +138,25 @@ def search_places(
         "results": results,
     }
 
+@app.get("/places/suggestions")
+def suggested_places(
+    limit: int = Query(
+        8,
+        ge=1,
+        le=20,
+    ),
+):
+
+    results = router.suggested_places(
+        limit=limit,
+    )
+
+    return {
+        "count": len(
+            results
+        ),
+        "results": results,
+    }
 
 # ---------------------------------------------------------
 # Exact Pleiades place

@@ -57,9 +57,19 @@ Via Roma currently uses:
 
 - Python / FastAPI for the backend
 - Graph v2 for transportation routing
-- a custom Dijkstra implementation
+- a Dijkstra implementation
 - React + TypeScript + Vite for the frontend
 - MapLibre GL JS for map visualization
+
+### Data
+
+Large raw and generated GIS/network files are not intended
+to be stored directly in the Git repository.
+
+The processing pipeline generates the runtime graph from the
+Pleiades and Itiner-e source datasets. Required generated
+runtime artifacts must therefore be created locally before
+starting the backend.
 
 ### Backend
 
