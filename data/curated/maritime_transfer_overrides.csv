@@ -1,0 +1,3 @@
+pleiades_id,title,force_maritime_candidate,approve_review_transfer,reason,source_label
+197488,Salona,true,true,"Pleiades routing type is settlement only, but independent historical evidence supports maritime/naval activity at Salona. Via Roma audit: 0.059 km to land network and 2.587 km to Itiner-e sea lane.","Kurilic 2012, Roman Naval Bases at the Eastern Adriatic; Ruff 2020, Roman ship near Salona"
+413014,Ancon(a),false,true,"Already typed by Pleiades as port and settlement. Via Roma audit: 0.745 km to land network and 2.012 km to sea lane, only 0.012 km outside the automatic 2 km threshold.","Ugolini 2021, The Roman port of Ancona during the Trajanic era"

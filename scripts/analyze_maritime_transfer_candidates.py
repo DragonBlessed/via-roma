@@ -11,6 +11,13 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "processed"
 
+DEFAULT_OVERRIDE_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "curated"
+    / "maritime_transfer_overrides.csv"
+)
+
 MARITIME_PLACE_TYPES = {
     "port",
     "harbor",
@@ -72,6 +79,15 @@ def parse_args():
         default=5.0,
         help="Distance threshold for a review candidate on each side.",
     )
+    
+    parser.add_argument(
+        "--overrides",
+        type=Path,
+        default=DEFAULT_OVERRIDE_PATH,
+        help=(
+            "Optional curated maritime-transfer override CSV."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -80,32 +96,45 @@ def parse_routing_types(value):
     """
     Normalize routing_types values from GeoJSON/CSV.
 
-    Handles ordinary Python lists, GeoPandas NumPy-array values,
-    valid list strings such as "['port', 'settlement']", and
-    NumPy-style CSV strings such as "['port' 'settlement']".
+    Handles ordinary Python lists, GeoPandas NumPy-array
+    values, valid list strings, and NumPy-style strings.
     """
 
     if value is None:
         return set()
 
-    if isinstance(value, float) and pd.isna(value):
+    if (
+        isinstance(value, float)
+        and pd.isna(value)
+    ):
         return set()
 
-    # GeoPandas may return list-valued GeoJSON properties as NumPy arrays.
     if (
-        not isinstance(value, (str, bytes))
-        and hasattr(value, "tolist")
+        not isinstance(
+            value,
+            (str, bytes),
+        )
+        and hasattr(
+            value,
+            "tolist",
+        )
     ):
         converted = value.tolist()
 
-        if isinstance(converted, (list, tuple, set)):
+        if isinstance(
+            converted,
+            (list, tuple, set),
+        ):
             return {
                 str(item).strip()
                 for item in converted
                 if str(item).strip()
             }
 
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(
+        value,
+        (list, tuple, set),
+    ):
         return {
             str(item).strip()
             for item in value
@@ -115,23 +144,34 @@ def parse_routing_types(value):
     text = str(value).strip()
 
     try:
-        parsed = ast.literal_eval(text)
+        parsed = ast.literal_eval(
+            text
+        )
 
-        if isinstance(parsed, (list, tuple, set)):
+        if isinstance(
+            parsed,
+            (list, tuple, set),
+        ):
             return {
                 str(item).strip()
                 for item in parsed
                 if str(item).strip()
             }
 
-        if isinstance(parsed, str):
-            return {parsed.strip()}
+        if isinstance(
+            parsed,
+            str,
+        ):
+            return {
+                parsed.strip()
+            }
 
-    except (ValueError, SyntaxError):
+    except (
+        ValueError,
+        SyntaxError,
+    ):
         pass
 
-    # pandas can serialize a NumPy array without commas:
-    #     ['port' 'settlement']
     import re
 
     quoted = re.findall(
@@ -146,8 +186,9 @@ def parse_routing_types(value):
             if item.strip()
         }
 
-    return {text} if text else set()
-
+    return {
+        text
+    }
 
 def mode_from_road_type(road_type):
     if road_type == "Sea Lane":
@@ -382,11 +423,94 @@ def main():
         parse_routing_types
     )
 
-    maritime_places = places[
-        places["routing_type_set"].apply(
-            lambda values: bool(values & MARITIME_PLACE_TYPES)
+
+    # ---------------------------------------------------------
+    # Curated maritime overrides
+    # ---------------------------------------------------------
+
+    force_maritime_ids = set()
+
+    if args.overrides.exists():
+
+        overrides = pd.read_csv(
+            args.overrides
         )
+
+        overrides[
+            "pleiades_id"
+        ] = (
+            overrides[
+                "pleiades_id"
+            ]
+            .astype(int)
+        )
+
+        force_mask = (
+            overrides[
+                "force_maritime_candidate"
+            ]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin(
+                {
+                    "true",
+                    "1",
+                    "yes",
+                }
+            )
+        )
+
+        force_maritime_ids = set(
+            overrides.loc[
+                force_mask,
+                "pleiades_id",
+            ].tolist()
+        )
+
+
+    maritime_type_mask = (
+        places[
+            "routing_type_set"
+        ]
+        .apply(
+            lambda values:
+            bool(
+                values
+                & MARITIME_PLACE_TYPES
+            )
+        )
+    )
+
+
+    override_mask = (
+        places[
+            "id"
+        ]
+        .astype(int)
+        .isin(
+            force_maritime_ids
+        )
+    )
+
+
+    maritime_places = places[
+        maritime_type_mask
+        | override_mask
     ].copy()
+
+
+    maritime_places[
+        "maritime_override"
+    ] = (
+        maritime_places[
+            "id"
+        ]
+        .astype(int)
+        .isin(
+            force_maritime_ids
+        )
+    )
 
     maritime_places["maritime_types"] = maritime_places[
         "routing_type_set"

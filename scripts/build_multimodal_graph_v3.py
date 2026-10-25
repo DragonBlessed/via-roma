@@ -19,6 +19,13 @@ from shapely.ops import substring, transform
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
+DEFAULT_OVERRIDE_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "curated"
+    / "maritime_transfer_overrides.csv"
+)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -51,6 +58,17 @@ def parse_args():
         help=(
             "Reuse an existing graph node when the new "
             "projection falls within this distance of it."
+        ),
+    )
+    
+    parser.add_argument(
+        "--overrides",
+        type=Path,
+        default=DEFAULT_OVERRIDE_PATH,
+        help=(
+            "Curated maritime-transfer approvals. "
+            "Approved review candidates may be included "
+            "without enabling every review candidate."
         ),
     )
 
@@ -923,6 +941,7 @@ def add_transfer_connector(
     title,
     pleiades_id,
     side,
+    certainty,
 ):
     """
     Add a bidirectional synthetic transfer connector.
@@ -943,10 +962,8 @@ def add_transfer_connector(
         "transport_mode": (
             "transfer"
         ),
-        "certainty": (
-            "inferred_from_strong_candidate"
-        ),
-        "lower_date": None,
+        "certainty": certainty,
+        "lower_date": None, 
         "upper_date": None,
         "construction_period": None,
         "bibliography": None,
@@ -1061,21 +1078,116 @@ road_geometry_by_id = {
 # Choose candidates
 # ---------------------------------------------------------
 
-allowed_statuses = {
-    "strong_candidate",
-}
+# ---------------------------------------------------------
+# Curated review-candidate approvals
+# ---------------------------------------------------------
+
+approved_review_ids = set()
+
+if ARGS.overrides.exists():
+
+    overrides = pd.read_csv(
+        ARGS.overrides
+    )
+
+    overrides[
+        "pleiades_id"
+    ] = (
+        overrides[
+            "pleiades_id"
+        ]
+        .astype(int)
+    )
+
+    approval_mask = (
+        overrides[
+            "approve_review_transfer"
+        ]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .isin(
+            {
+                "true",
+                "1",
+                "yes",
+            }
+        )
+    )
+
+    approved_review_ids = set(
+        overrides.loc[
+            approval_mask,
+            "pleiades_id",
+        ].tolist()
+    )
+
+
+print(
+    "Curated approved review IDs:",
+    sorted(
+        approved_review_ids
+    ),
+)
+
+
+# ---------------------------------------------------------
+# Choose candidates
+# ---------------------------------------------------------
+
+candidates[
+    "id"
+] = (
+    candidates[
+        "id"
+    ]
+    .astype(int)
+)
+
+
+strong_mask = (
+    candidates[
+        "candidate_status"
+    ]
+    == "strong_candidate"
+)
+
+
+approved_review_mask = (
+    (
+        candidates[
+            "candidate_status"
+        ]
+        == "review_candidate"
+    )
+    & candidates[
+        "id"
+    ].isin(
+        approved_review_ids
+    )
+)
+
 
 if ARGS.include_review:
-    allowed_statuses.add(
-        "review_candidate"
+
+    review_mask = (
+        candidates[
+            "candidate_status"
+        ]
+        == "review_candidate"
+    )
+
+else:
+
+    review_mask = (
+        approved_review_mask
     )
 
 
 selected = candidates[
-    candidates[
-        "candidate_status"
-    ].isin(
-        allowed_statuses
+    (
+        strong_mask
+        | review_mask
     )
     & candidates[
         "would_merge_components"
@@ -1101,8 +1213,13 @@ print(
 )
 
 print(
-    f"Statuses: "
-    f"{sorted(allowed_statuses)}"
+    "Strong transfers selected: "
+    f"{int((selected['candidate_status'] == 'strong_candidate').sum()):,}"
+)
+
+print(
+    "Review transfers selected: "
+    f"{int((selected['candidate_status'] == 'review_candidate').sum()):,}"
 )
 
 
@@ -1175,6 +1292,37 @@ for row_number, row in (
     pleiades_id = int(
         row["id"]
     )
+    
+    candidate_status = str(
+        row[
+            "candidate_status"
+        ]
+    )
+
+
+    if (
+        candidate_status
+        == "strong_candidate"
+    ):
+
+        transfer_certainty = (
+            "inferred_from_strong_candidate"
+        )
+
+    elif (
+        pleiades_id
+        in approved_review_ids
+    ):
+
+        transfer_certainty = (
+            "curated_review_candidate"
+        )
+
+    else:
+
+        transfer_certainty = (
+            "inferred_from_review_candidate"
+        )
 
     title = str(
         row["title"]
@@ -1383,6 +1531,7 @@ for row_number, row in (
         title,
         pleiades_id,
         "land",
+        transfer_certainty,
     )
 
     # Port -> sea projection.
@@ -1398,6 +1547,7 @@ for row_number, row in (
         title,
         pleiades_id,
         "sea",
+        transfer_certainty,
     )
 
     connector_physical_edges += 2
