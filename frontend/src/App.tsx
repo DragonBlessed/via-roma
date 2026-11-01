@@ -48,6 +48,15 @@ const SELECTED_SEGMENT_SOURCE_ID =
 const SELECTED_SEGMENT_LAYER_ID =
   "via-roma-selected-segment-line";
 
+const SUGGESTED_PLACES_SOURCE_ID =
+  "via-roma-suggested-places";
+
+const SUGGESTED_PLACES_CIRCLE_LAYER_ID =
+  "via-roma-suggested-place-circles";
+
+const SUGGESTED_PLACES_LABEL_LAYER_ID =
+  "via-roma-suggested-place-labels";
+
 type HealthResponse = {
   status: string;
 
@@ -177,6 +186,218 @@ type SelectedSegment = {
   construction_period:
   string | null;
 };
+
+function isUnknownChronologyDate(
+  value: number | string | null | undefined
+): boolean {
+
+  if (
+    value === null ||
+    value === ""
+  ) {
+    return true;
+  }
+
+  const numericValue =
+    Number(value);
+
+  if (
+    Number.isNaN(
+      numericValue
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    numericValue === 0 ||
+    numericValue === 9999
+  );
+}
+
+
+type ChronologyEvidenceLevel =
+  | "explicit_range"
+  | "partial_date"
+  | "construction_attribution_only"
+  | "none";
+
+
+function chronologyEvidenceLevel(
+  lowerDate:
+    number | string | null | undefined,
+  upperDate:
+    number | string | null | undefined,
+  constructionPeriod:
+    string | null | undefined
+): ChronologyEvidenceLevel {
+
+  const hasLower =
+    !isUnknownChronologyDate(
+      lowerDate
+    );
+
+  const hasUpper =
+    !isUnknownChronologyDate(
+      upperDate
+    );
+
+  const hasConstruction =
+    typeof constructionPeriod ===
+      "string" &&
+    constructionPeriod
+      .trim()
+      .length > 0;
+
+  if (
+    hasLower &&
+    hasUpper
+  ) {
+    return "explicit_range";
+  }
+
+  if (
+    hasLower ||
+    hasUpper
+  ) {
+    return "partial_date";
+  }
+
+  if (hasConstruction) {
+    return (
+      "construction_attribution_only"
+    );
+  }
+
+  return "none";
+}
+
+
+function chronologyEvidenceLabel(
+  lowerDate:
+    number | string | null | undefined,
+  upperDate:
+    number | string | null | undefined,
+  constructionPeriod:
+    string | null | undefined
+): string {
+
+  const level =
+    chronologyEvidenceLevel(
+      lowerDate,
+      upperDate,
+      constructionPeriod
+    );
+
+  if (
+    level === "explicit_range"
+  ) {
+    return "Explicit date range";
+  }
+
+  if (
+    level === "partial_date"
+  ) {
+    return "Partial explicit date evidence";
+  }
+
+  if (
+    level ===
+      "construction_attribution_only"
+  ) {
+    return "Construction attribution only";
+  }
+
+  return "No usable chronology";
+}
+
+
+function formatChronologyDate(
+  value: number | string | null
+): string {
+
+  if (
+    isUnknownChronologyDate(
+      value
+    )
+  ) {
+    return "Unknown";
+  }
+
+  const numericValue =
+    Number(value);
+
+  if (
+    Number.isNaN(
+      numericValue
+    )
+  ) {
+    return String(value);
+  }
+
+  if (numericValue < 0) {
+    return `${Math.abs(
+      numericValue
+    )} BCE`;
+  }
+
+  return `${numericValue} CE`;
+}
+
+
+function formatChronologyRange(
+  lowerDate: number | string | null,
+  upperDate: number | string | null
+): string {
+
+  const lowerUnknown =
+    isUnknownChronologyDate(
+      lowerDate
+    );
+
+  const upperUnknown =
+    isUnknownChronologyDate(
+      upperDate
+    );
+
+  if (
+    lowerUnknown &&
+    upperUnknown
+  ) {
+    return "Not available";
+  }
+
+  if (
+    !lowerUnknown &&
+    upperUnknown
+  ) {
+    return (
+      `From ${formatChronologyDate(
+        lowerDate
+      )}; end date unknown`
+    );
+  }
+
+  if (
+    lowerUnknown &&
+    !upperUnknown
+  ) {
+    return (
+      `Start date unknown; through ${formatChronologyDate(
+        upperDate
+      )}`
+    );
+  }
+
+  return (
+    `${formatChronologyDate(
+      lowerDate
+    )} → ${formatChronologyDate(
+      upperDate
+    )}`
+  );
+}
+
 
 type RouteResponse = {
   origin: Place;
@@ -317,6 +538,11 @@ function App() {
   ] = useState(true);
 
   const [
+    chronologyEvidenceVisible,
+    setChronologyEvidenceVisible,
+  ] = useState(false);
+
+  const [
     selectedSegment,
     setSelectedSegment,
   ] = useState<SelectedSegment | null>(
@@ -341,6 +567,11 @@ const [
 ] = useState<number | null>(
   null
 );
+
+const [
+  mapReady,
+  setMapReady,
+] = useState(false);
 
 
   // -------------------------------------------------------
@@ -384,6 +615,10 @@ const [
     map.on(
       "load",
       async () => {
+        setMapReady(
+          true
+        );
+
         setNetworkLoading(
           true
         );
@@ -406,16 +641,49 @@ const [
 
           const networkData =
             await response.json();
-          
+
+          const chronologyNetworkData = {
+            ...networkData,
+
+            features:
+              (
+                networkData.features ??
+                []
+              ).map(
+                (feature: any) => {
+
+                  const properties =
+                    feature.properties ??
+                    {};
+
+                  return {
+                    ...feature,
+
+                    properties: {
+                      ...properties,
+
+                      chronology_evidence:
+                        chronologyEvidenceLevel(
+                          properties.lower_date,
+                          properties.upper_date,
+                          properties
+                            .construction_period
+                        ),
+                    },
+                  };
+                }
+              ),
+          };
+
           setNetworkFeatureCount(
-            networkData.feature_count ??
-            networkData.features?.length ??
+            chronologyNetworkData.feature_count ??
+            chronologyNetworkData.features?.length ??
             0
           );
 
           console.log(
             "Transportation network loaded:",
-            networkData.feature_count,
+            chronologyNetworkData.feature_count,
             "features"
           );
 
@@ -428,7 +696,7 @@ const [
               NETWORK_SOURCE_ID,
               {
                 type: "geojson",
-                data: networkData,
+                data: chronologyNetworkData,
               }
             );
           }
@@ -839,6 +1107,10 @@ const [
       destinationMarkerRef.current
         ?.remove();
 
+      setMapReady(
+        false
+      );
+
       map.remove();
 
       mapRef.current =
@@ -946,6 +1218,199 @@ const [
     loadSuggestedPlaces();
 
   }, []);
+
+
+  // -------------------------------------------------------
+  // Suggested places map layer
+  // -------------------------------------------------------
+
+  useEffect(() => {
+
+    const map =
+      mapRef.current;
+
+
+    if (
+      !map ||
+      !mapReady
+    ) {
+
+      return;
+
+    }
+
+
+    const placeData = {
+      type:
+        "FeatureCollection" as const,
+
+      features:
+        suggestedPlaces.map(
+          (place) => ({
+            type:
+              "Feature" as const,
+
+            properties: {
+              name:
+                place.name,
+
+              pleiades_id:
+                place.pleiades_id,
+            },
+
+            geometry: {
+              type:
+                "Point" as const,
+
+              coordinates: [
+                place.longitude,
+                place.latitude,
+              ],
+            },
+          })
+        ),
+    };
+
+
+    const existingSource =
+      map.getSource(
+        SUGGESTED_PLACES_SOURCE_ID
+      );
+
+
+    if (existingSource) {
+
+      (
+        existingSource as
+          maplibregl.GeoJSONSource
+      ).setData(
+        placeData
+      );
+
+      return;
+
+    }
+
+
+    map.addSource(
+      SUGGESTED_PLACES_SOURCE_ID,
+      {
+        type:
+          "geojson",
+
+        data:
+          placeData,
+      }
+    );
+
+
+    map.addLayer({
+      id:
+        SUGGESTED_PLACES_CIRCLE_LAYER_ID,
+
+      type:
+        "circle",
+
+      source:
+        SUGGESTED_PLACES_SOURCE_ID,
+
+      paint: {
+
+        "circle-radius": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+
+          3,
+          5,
+
+          6,
+          8,
+
+          9,
+          11,
+        ],
+
+        "circle-color":
+          "#000000",
+
+        "circle-stroke-color":
+          "#f5e6c8",
+
+        "circle-stroke-width":
+          2,
+
+        "circle-opacity":
+          0.95,
+      },
+    });
+
+
+    map.addLayer({
+      id:
+        SUGGESTED_PLACES_LABEL_LAYER_ID,
+
+      type:
+        "symbol",
+
+      source:
+        SUGGESTED_PLACES_SOURCE_ID,
+
+      layout: {
+
+        "text-field": [
+          "get",
+          "name",
+        ],
+
+        "text-size": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+
+          3,
+          12,
+
+          6,
+          14,
+
+          9,
+          17,
+        ],
+
+        "text-offset": [
+          0,
+          1.15,
+        ],
+
+        "text-anchor":
+          "top",
+
+        "text-allow-overlap":
+          false,
+
+        "text-padding":
+          3,
+      },
+
+      paint: {
+
+        "text-color":
+          "#2b2118",
+
+        "text-halo-color":
+          "#f5e6c8",
+
+        "text-halo-width":
+          1.5,
+      },
+    });
+
+  }, [
+    suggestedPlaces,
+    mapReady,
+  ]);
+
 
   // -------------------------------------------------------
   // Search helper
@@ -1272,6 +1737,158 @@ const [
 
   }
 
+  // -------------------------------------------------------
+  // Selected place markers
+  // -------------------------------------------------------
+
+  useEffect(() => {
+
+    const map =
+      mapRef.current;
+
+
+    if (
+      !map ||
+      !mapReady
+    ) {
+
+      return;
+
+    }
+
+
+    originMarkerRef.current
+      ?.remove();
+
+    originMarkerRef.current =
+      null;
+
+
+    if (!selectedOrigin) {
+
+      return;
+
+    }
+
+
+    const element =
+      document.createElement(
+        "div"
+      );
+
+    element.style.width =
+      "18px";
+
+    element.style.height =
+      "18px";
+
+    element.style.borderRadius =
+      "50%";
+
+    element.style.background =
+      "#1d7a36";
+
+    element.style.border =
+      "3px solid #ffffff";
+
+    element.style.boxShadow =
+      "0 1px 5px rgba(0, 0, 0, 0.45)";
+
+
+    originMarkerRef.current =
+      new Marker({
+        element,
+        anchor:
+          "center",
+      })
+
+        .setLngLat([
+          selectedOrigin.longitude,
+          selectedOrigin.latitude,
+        ])
+
+        .addTo(map);
+
+  }, [
+    selectedOrigin,
+    mapReady,
+  ]);
+
+
+  useEffect(() => {
+
+    const map =
+      mapRef.current;
+
+
+    if (
+      !map ||
+      !mapReady
+    ) {
+
+      return;
+
+    }
+
+
+    destinationMarkerRef.current
+      ?.remove();
+
+    destinationMarkerRef.current =
+      null;
+
+
+    if (!selectedDestination) {
+
+      return;
+
+    }
+
+
+    const element =
+      document.createElement(
+        "div"
+      );
+
+    element.style.width =
+      "18px";
+
+    element.style.height =
+      "18px";
+
+    element.style.borderRadius =
+      "50%";
+
+    element.style.background =
+      "#b32323";
+
+    element.style.border =
+      "3px solid #ffffff";
+
+    element.style.boxShadow =
+      "0 1px 5px rgba(0, 0, 0, 0.45)";
+
+
+    destinationMarkerRef.current =
+      new Marker({
+        element,
+        anchor:
+          "center",
+      })
+
+        .setLngLat([
+          selectedDestination.longitude,
+          selectedDestination.latitude,
+        ])
+
+        .addTo(map);
+
+  }, [
+    selectedDestination,
+    mapReady,
+  ]);
+
+
   function kmToMiles(
     kilometers: number
   ) {
@@ -1289,20 +1906,6 @@ const [
     setRouteError(null);
 
     setSelectedSegment(null);
-
-
-    originMarkerRef.current
-      ?.remove();
-
-    destinationMarkerRef.current
-      ?.remove();
-
-
-    originMarkerRef.current =
-      null;
-
-    destinationMarkerRef.current =
-      null;
 
 
     const map =
@@ -1472,13 +2075,14 @@ const [
     );
 
 
-    map.addLayer({
+    const routeLayer:
+      LineLayerSpecification = {
 
       id:
         ROUTE_LAYER_ID,
 
       type:
-        "line",
+        "line" as const,
 
       source:
         ROUTE_SOURCE_ID,
@@ -1486,17 +2090,36 @@ const [
       layout: {
 
         "line-join":
-          "round",
+          "round" as const,
 
         "line-cap":
-          "round",
+          "round" as const,
 
       },
 
       paint: {
 
-        "line-color":
+        "line-color": [
+          "match",
+          [
+            "get",
+            "transport_mode",
+          ],
+
+          "road",
           "#b32323",
+
+          "sea",
+          "#3978a8",
+
+          "river",
+          "#4f8069",
+
+          "transfer",
+          "#f4c542",
+
+          "#b32323",
+        ],
 
         "line-width":
           5,
@@ -1506,48 +2129,28 @@ const [
 
       },
 
-    });
+    };
 
 
-    originMarkerRef.current
-      ?.remove();
+    if (
+      map.getLayer(
+        SUGGESTED_PLACES_CIRCLE_LAYER_ID
+      )
+    ) {
 
-    destinationMarkerRef.current
-      ?.remove();
+      map.addLayer(
+        routeLayer,
+        SUGGESTED_PLACES_CIRCLE_LAYER_ID
+      );
 
+    }
+    else {
 
-    originMarkerRef.current =
-      new Marker({
-        color:
-          "#1d7a36",
-      })
+      map.addLayer(
+        routeLayer
+      );
 
-        .setLngLat([
-          routeData.origin.longitude,
-          routeData.origin.latitude,
-        ])
-
-        .addTo(map);
-
-
-    destinationMarkerRef.current =
-      new Marker({
-        color:
-          "#b32323",
-      })
-
-        .setLngLat([
-          routeData
-            .destination
-            .longitude,
-
-          routeData
-            .destination
-            .latitude,
-        ])
-
-        .addTo(map);
-
+    }
 
     const coordinates =
       routeData
@@ -1753,6 +2356,75 @@ const [
   }
 
 
+  function toggleChronologyEvidence() {
+    const nextVisible =
+      !chronologyEvidenceVisible;
+
+    setChronologyEvidenceVisible(
+      nextVisible
+    );
+
+    const map =
+      mapRef.current;
+
+    if (
+      !map ||
+      !map.getLayer(
+        NETWORK_LAYER_ID
+      )
+    ) {
+      return;
+    }
+
+    map.setPaintProperty(
+      NETWORK_LAYER_ID,
+      "line-color",
+      nextVisible
+        ? [
+          "match",
+          [
+            "get",
+            "chronology_evidence",
+          ],
+
+          "explicit_range",
+          "#2f6f44",
+
+          "partial_date",
+          "#b7791f",
+
+          "construction_attribution_only",
+          "#6b5b95",
+
+          "#9a9a9a",
+        ]
+        : [
+          "match",
+          [
+            "get",
+            "transport_mode",
+          ],
+
+          "sea",
+          "#3978a8",
+
+          "river",
+          "#4f8069",
+
+          "#866536",
+        ]
+    );
+
+    map.setPaintProperty(
+      NETWORK_LAYER_ID,
+      "line-opacity",
+      nextVisible
+        ? 0.9
+        : 0.75
+    );
+  }
+
+
   return (
 
     <div className="app">
@@ -1796,6 +2468,62 @@ const [
             </span>
 
           </label>
+
+          <label className="network-toggle">
+
+            <input
+              type="checkbox"
+              checked={
+                chronologyEvidenceVisible
+              }
+              disabled={
+                networkLoading ||
+                Boolean(networkError)
+              }
+              onChange={
+                toggleChronologyEvidence
+              }
+            />
+
+            <span>
+              Color network by chronology evidence
+            </span>
+
+          </label>
+
+          {
+            chronologyEvidenceVisible &&
+            (
+              <div
+                className="network-status"
+                style={{
+                  display: "grid",
+                  gap: "4px",
+                  marginTop: "6px",
+                }}
+              >
+                <strong>
+                  Chronology evidence
+                </strong>
+
+                <span>
+                  ● Explicit date range
+                </span>
+
+                <span>
+                  ◐ Partial explicit date evidence
+                </span>
+
+                <span>
+                  ◆ Construction attribution only
+                </span>
+
+                <span>
+                  ○ No usable chronology
+                </span>
+              </div>
+            )
+          }
 
           {
             networkLoading &&
@@ -1970,52 +2698,6 @@ const [
               destinationResults.length > 0 &&
               (
                 <div className="search-results">
-                <input
-                  id="destination"
-                  type="text"
-
-                  value={
-                    destinationQuery
-                  }
-
-                  placeholder="Search or choose a Roman place..."
-
-                  autoComplete="off"
-
-                  onFocus={() =>
-                    setDestinationDropdownOpen(
-                      true
-                    )
-                  }
-
-                  onBlur={(event) => {
-
-                    const nextFocus =
-                      event.relatedTarget;
-
-                    if (
-                      !nextFocus ||
-                      !event.currentTarget
-                        .parentElement
-                        ?.contains(
-                          nextFocus as Node
-                        )
-                    ) {
-
-                      setDestinationDropdownOpen(
-                        false
-                      );
-
-                    }
-
-                  }}
-
-                  onChange={(event) =>
-                    handleDestinationChange(
-                      event.target.value
-                    )
-                  }
-                />
                   {
                     (
                       destinationQuery.trim().length === 0 ||
@@ -2451,7 +3133,7 @@ const [
                   (
                     <p>
                       <strong>
-                        Construction:
+                        Construction attribution:
                       </strong>{" "}
 
                       {
@@ -2459,6 +3141,56 @@ const [
                           .construction_period
                       }
                     </p>
+                  )
+                }
+
+
+                {
+                  selectedSegment.itinere_id !=
+                  null &&
+                  (
+                    <div className="chronology-details">
+
+                      <p>
+                        <strong>
+                          Source chronology:
+                        </strong>{" "}
+
+                        {
+                          formatChronologyRange(
+                            selectedSegment.lower_date,
+                            selectedSegment.upper_date
+                          )
+                        }
+                      </p>
+
+                      <p>
+                        <strong>
+                          Chronology evidence:
+                        </strong>{" "}
+
+                        {
+                          chronologyEvidenceLabel(
+                            selectedSegment.lower_date,
+                            selectedSegment.upper_date,
+                            selectedSegment
+                              .construction_period
+                          )
+                        }
+                      </p>
+
+                      <p className="chronology-note">
+                        <small>
+                          Itiner-e chronology is shown as
+                          source evidence and does not
+                          represent the complete operational
+                          lifespan of this route. Raw 0 and
+                          9999 date values are displayed as
+                          unknown rather than literal years.
+                        </small>
+                      </p>
+
+                    </div>
                   )
                 }
 

@@ -42,7 +42,7 @@ app.add_middleware(
 )
 
 
-# Load Graph v2 and its place mapping once when the
+# Load the routing graph once and its place mapping once when the
 # application starts.
 router = RoutingService()
 router.network_geojson()

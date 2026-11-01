@@ -278,6 +278,26 @@ class RoutingService:
                             0.0,
                         )
                     ),
+                    "certainty": (
+                        data.get(
+                            "certainty"
+                        )
+                    ),
+                    "lower_date": (
+                        data.get(
+                            "lower_date"
+                        )
+                    ),
+                    "upper_date": (
+                        data.get(
+                            "upper_date"
+                        )
+                    ),
+                    "construction_period": (
+                        data.get(
+                            "construction_period"
+                        )
+                    ),
                 },
                 "geometry": {
                     "type": "LineString",
